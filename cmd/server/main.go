@@ -9,7 +9,7 @@ import (
 	"log"
 	"net/http"
 
-	"fmt"
+	// "fmt"
 	"github.com/kokdot/go-musthave-devops1/internal/handler"
 )
 
@@ -23,40 +23,46 @@ func main() {
     r.Use(middleware.Recoverer)
     r.Get("/", handler.GetAll)
     r.Route("/update", func(r chi.Router) {
-        r.Route("/counter", func(r chi.Router) {
-            r.Route("/{nameData}/{valueData}", func(r chi.Router) {
-                r.Use(handler.PostCounterCtx)
-                r.Post("/", handler.PostUpdateCounter)
-            })
-        })
-        r.Route("/gauge", func(r chi.Router) {
-            r.Route("/{nameData}/{valueData}", func(r chi.Router) {
-                r.Use(handler.PostGaugeCtx)
-                r.Post("/", handler.PostUpdateGauge)
-            })
-        })
-        r.Route("/",func(r chi.Router) {
-            r.Post("/*", func(w http.ResponseWriter, r *http.Request) {
-		        w.Header().Set("content-type", "text/plain; charset=utf-8")
-                w.WriteHeader(http.StatusNotImplemented)
-                fmt.Fprint(w, "line: 52; http.StatusNotImplemented")
-	        })
-        })
+        r.Post("/", handler.PostUpdate) 
+
+
+
+        // r.Route("/counter", func(r chi.Router) {
+        //     r.Route("/{nameData}/{valueData}", func(r chi.Router) {
+        //         r.Use(handler.PostCounterCtx)
+        //         r.Post("/", handler.PostUpdateCounter)
+        //     })
+        // })
+        // r.Route("/gauge", func(r chi.Router) {
+        //     r.Route("/{nameData}/{valueData}", func(r chi.Router) {
+        //         r.Use(handler.PostGaugeCtx)
+        //         r.Post("/", handler.PostUpdateGauge)
+        //     })
+        // })
+        // r.Route("/",func(r chi.Router) {
+        //     r.Post("/*", func(w http.ResponseWriter, r *http.Request) {
+		//         w.Header().Set("content-type", "text/plain; charset=utf-8")
+        //         w.WriteHeader(http.StatusNotImplemented)
+        //         fmt.Fprint(w, "line: 52; http.StatusNotImplemented")
+	    //     })
+        // })
     })
 
     r.Route("/value", func(r chi.Router) {
-		r.Route("/counter", func(r chi.Router){
-            r.Route("/{nameData}", func(r chi.Router) {
-                r.Use(handler.GetCtx)
-                r.Get("/", handler.GetCounter)
-            })
-        })
-       	r.Route("/gauge", func(r chi.Router){
-            r.Route("/{nameData}", func(r chi.Router) {
-                r.Use(handler.GetCtx)
-                r.Get("/", handler.GetGauge)
-            })
-        })
+        r.Get("/", handler.GetValue)
+
+		// r.Route("/counter", func(r chi.Router){
+        //     r.Route("/{nameData}", func(r chi.Router) {
+        //         r.Use(handler.GetCtx)
+        //         r.Get("/", handler.GetCounter)
+        //     })
+        // })
+       	// r.Route("/gauge", func(r chi.Router){
+        //     r.Route("/{nameData}", func(r chi.Router) {
+        //         r.Use(handler.GetCtx)
+        //         r.Get("/", handler.GetGauge)
+        //     })
+        // })
 	})
 
     log.Fatal(http.ListenAndServe(":8080", r))
