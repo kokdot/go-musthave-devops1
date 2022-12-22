@@ -1,171 +1,338 @@
 package main
 
 import (
-	// "oleiade/reflections"
+	"encoding/json"
 	"fmt"
-	"log"
-	"math/rand"
-	"runtime"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"testing"
-	"github.com/oleiade/reflections"
-	// "github.com/kokdot/go-musthave-devops/internal/store"
+	"bytes"
+
+	"github.com/stretchr/testify/assert"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/kokdot/go-musthave-devops1/internal/handler"
+	"github.com/kokdot/go-musthave-devops1/internal/store"
 )
 
-// type RunTimeMemStats struct {
-// 	Alloc Guage
-// 	TotalAlloc Guage
-// 	Sys Guage
-// 	Mallocs Guage
-// }
-// type FuncMem func(rtm *runtime.MemStats, value string) *runtime.MemStats {
-// 	value: func(rtm runtime.MemStats) {
-
-// }
-
-// func ()
-
-// var MonMap MonitorMap = MonitorMap{
-// 	"Alloc": Gauge(1.3),
-// 	"TotalAlloc": Gauge(1.4),
-// 	"Sys": Gauge(1.5),
-// 	"Mallocs": Gauge(1.6),
-// }
-
+//test git git test what
 func TestHandler(t *testing.T) {
-	var rtm runtime.MemStats
-	runtime.ReadMemStats(&rtm)
-	var fields []string
-	var waitMap MonitorMap = make(MonitorMap)
+	r := chi.NewRouter()
+	r.Use(middleware.RequestID)
+	r.Use(middleware.RealIP)
+	r.Use(middleware.Logger)
+	r.Use(middleware.Recoverer)
+	r.Get("/", handler.GetAll)
+	r.Route("/update", func(r chi.Router) {
+        r.Post("/", handler.PostUpdate)
+		r.Route("/counter", func(r chi.Router) {
+			r.Route("/{nameData}/{valueData}", func(r chi.Router) {
+				r.Use(handler.PostCounterCtx)
+				r.Post("/", handler.PostUpdateCounter)
+			})
+		})
+		r.Route("/gauge", func(r chi.Router) {
+			r.Route("/{nameData}/{valueData}", func(r chi.Router) {
+				r.Use(handler.PostGaugeCtx)
+				r.Post("/", handler.PostUpdateGauge)
+			})
+		})
+		r.Route("/", func(r chi.Router) {
+			r.Post("/*", func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("content-type", "text/plain; charset=utf-8")
+				w.WriteHeader(http.StatusNotImplemented)
+				fmt.Fprint(w, "line: 52; http.StatusNotImplemented")
+			})
+		})
+	})
 
-	// Fields will list every structure exportable fields.
-	// Here, it's content would be equal to:
-	// []string{"FirstField", "SecondField", "ThirdField"}
-	fields, _ = reflections.Fields(rtm)
-	fmt.Println(fields)
-	for _, field := range fields {
-		RandomValue := rand.Uint64()
-		fmt.Println(RandomValue)
-		err := reflections.SetField(&rtm, field, RandomValue)
-		if err != nil {
-			log.Fatalf("Failed set field: %s", err)
-		}
-		// waitMap[field] = Guage(float64(RandomValue))
+	r.Route("/value", func(r chi.Router) {
+        r.Post("/", handler.GetValue)
+		r.Route("/counter", func(r chi.Router) {
+			r.Route("/{nameData}", func(r chi.Router) {
+				r.Use(handler.GetCtx)
+				r.Get("/", handler.GetCounter)
+			})
+		})
+		r.Route("/gauge", func(r chi.Router) {
+			r.Route("/{nameData}", func(r chi.Router) {
+				r.Use(handler.GetCtx)
+				r.Get("/", handler.GetGauge)
+			})
+		})
+	})
+
+	type want struct {
+		StatusCode  int
+		contentType string
+		result      string
+		mtxNew store.Metrics
 	}
-	// fmt.Println(waitMap)
-	fmt.Println(rtm)
-	_ = waitMap
+	// var valGauge store.Gauge = 4.6 
+	var valCounter store.Counter = 64
+	// tests := []struct {
+	// 	name   string
+	// 	want   want
+	// 	url    string
+	// 	method string
+	// 	mtxOld store.Metrics
+	// }{
+	// 	{
+	// 		name: "counter norm",
+	// 		want: want{
+	// 			StatusCode:  http.StatusOK,
+	// 			contentType: "text/plain; charset=utf-8",
+	// 		},
+	// 		url:    "/update/counter/PollCount/5",
+	// 		method: http.MethodPost,
+	// 	},
+	// 	{
+	// 		name: "counter norm update json",
+	// 		want: want{
+	// 			StatusCode:  http.StatusOK,
+	// 			contentType: "application/json",
+	// 			mtxNew:  store.Metrics{
+	// 				ID: "PollCount",
+	// 				MType: "Counter",
+	// 				Delta: &valCounter,
+	// 			},
+	// 		},
+	// 		url:    "/update/",
+	// 		method: http.MethodPost,
+	// 		mtxOld:  store.Metrics{
+	// 			ID: "PollCount",
+	// 			MType: "Counter",
+	// 			Delta: &valCounter,
+	// 		},
+	// 	},
+	// 	{
+	// 		name: "counter error update json",
+	// 		want: want{
+	// 			StatusCode:  http.StatusOK,
+	// 			contentType: "application/json",
+	// 			mtxNew:  store.Metrics{
+	// 				ID: "PollCount",
+	// 				MType: "Counter",
+	// 				// Delta: &valCounter,
+	// 			},
+	// 		},
+	// 		url:    "/update/",
+	// 		method: http.MethodPost,
+	// 		mtxOld:  store.Metrics{
+	// 			ID: "PollCount",
+	// 			MType: "Counter",
+	// 			Delta: &valCounter,
+	// 		},
+	// 	},
+	// 	{
+	// 		name: "counter error",
+	// 		want: want{
+	// 			StatusCode:  http.StatusBadRequest,
+	// 			contentType: "text/plain; charset=utf-8",
+	// 		},
+	// 		url:    "/update/counter/PollCount/none",
+	// 		method: http.MethodPost,
+	// 	},
+	// 	{
+	// 		name: "gauge norm",
+	// 		want: want{
+	// 			StatusCode:  http.StatusOK,
+	// 			contentType: "text/plain; charset=utf-8",
+	// 		},
+	// 		url:    "/update/gauge/Alloc/3.6",
+	// 		method: http.MethodPost,
+	// 	},
+	// 			{
+	// 		name: "gauge norm update json",
+	// 		want: want{
+	// 			StatusCode:  http.StatusOK,
+	// 			contentType: "application/json",
+	// 			mtxNew:  store.Metrics{
+	// 				ID: "PollCount",
+	// 				MType: "Counter",
+	// 				Value: &valGauge,
+	// 			},
+	// 		},
+	// 		url:    "/update/",
+	// 		method: http.MethodPost,
+	// 		mtxOld:  store.Metrics{
+	// 			ID: "PollCount",
+	// 			MType: "Counter",
+	// 			Value: &valGauge,
+	// 		},
+	// 	},
+	// 	{
+	// 		name: "gauge error",
+	// 		want: want{
+	// 			StatusCode:  http.StatusBadRequest,
+	// 			contentType: "text/plain; charset=utf-8",
+	// 		},
+	// 		url:    "/update/gauge/Alloc/none",
+	// 		method: http.MethodPost,
+	// 	},
+	// 	{
+	// 		name: "no counter no gauge",
+	// 		want: want{
+	// 			StatusCode:  http.StatusNotImplemented,
+	// 			contentType: "text/plain; charset=utf-8",
+	// 		},
+	// 		url:    "/update/error/PollCount/100",
+	// 		method: http.MethodPost,
+	// 	},
+	// 	{
+	// 		name: "default",
+	// 		want: want{
+	// 			StatusCode:  http.StatusMethodNotAllowed,
+	// 			contentType: "text/plain; charset=utf-8",
+	// 		},
+	// 		url:    "/",
+	// 		method: http.MethodPost,
+	// 	},
+	// 	{
+	// 		name: "get counter",
+	// 		want: want{
+	// 			StatusCode:  http.StatusOK,
+	// 			contentType: "text/plain; charset=utf-8",
+	// 			result:      "5",
+	// 		},
+	// 		method: http.MethodGet,
+	// 		url:    "/value/counter/PollCount",
+	// 	},
+	// 	{
+	// 		name: "get gauge",
+	// 		want: want{
+	// 			StatusCode:  http.StatusOK,
+	// 			contentType: "text/plain; charset=utf-8",
+	// 			result:      "3.6",
+	// 		},
+	// 		url:    "/value/gauge/Alloc",
+	// 		method: http.MethodGet,
+	// 	},
+	// }
 
+	//json-----------------------------------------------------
+	testsJson := []struct {
+		name   string
+		want   want
+		url    string
+		method string
+		mtxOld store.Metrics
+	}{
+		{
+			name: "counter norm update json",
+			want: want{
+				StatusCode:  http.StatusOK,
+				contentType: "application/json",
+				mtxNew:  store.Metrics{
+					ID: "PollCount",
+					MType: "Counter",
+					Delta: &valCounter,
+				},
+			},
+			url:    "/update/",
+			method: http.MethodPost,
+			mtxOld:  store.Metrics{
+				ID: "PollCount",
+				MType: "Counter",
+				Delta: &valCounter,
+			},
+		},
+		// {
+		// 	name: "counter error update json",
+		// 	want: want{
+		// 		StatusCode:  http.StatusOK,
+		// 		contentType: "application/json",
+		// 		mtxNew:  store.Metrics{
+		// 			ID: "PollCount",
+		// 			MType: "Counter",
+		// 			// Delta: &valCounter,
+		// 		},
+		// 	},
+		// 	url:    "/update/",
+		// 	method: http.MethodPost,
+		// 	mtxOld:  store.Metrics{
+		// 		ID: "PollCount",
+		// 		MType: "Counter",
+		// 		Delta: &valCounter,
+		// 	},
+		// },
+		
+		// {
+		// 	name: "gauge norm update json",
+		// 	want: want{
+		// 		StatusCode:  http.StatusOK,
+		// 		contentType: "application/json",
+		// 		mtxNew:  store.Metrics{
+		// 			ID: "PollCount",
+		// 			MType: "Counter",
+		// 			Value: &valGauge,
+		// 		},
+		// 	},
+		// 	url:    "/update/",
+		// 	method: http.MethodPost,
+		// 	mtxOld:  store.Metrics{
+		// 		ID: "PollCount",
+		// 		MType: "Counter",
+		// 		Value: &valGauge,
+		// 	},
+		// },
+	}
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	// for _, tt := range tests {
+	// 	t.Run(tt.name, func(t *testing.T) {
+	// 		// tt.Skip()
+	// 		request := httptest.NewRequest(tt.method, tt.url, nil)
+	// 		w := httptest.NewRecorder()
+	// 		r.ServeHTTP(w, request)
+	// 		result := w.Result()
+	// 		body, err := io.ReadAll(result.Body)
+	// 		result.Body.Close()
+	// 		assert.NoError(t, err)
+	// 		assert.Equal(t, tt.want.StatusCode, result.StatusCode)
+	// 		fmt.Println(tt.name)
+	// 		if tt.name != "default" {
+	// 			assert.Equal(t, tt.want.contentType, result.Header.Get("Content-Type"))
+	// 		}
+	// 		if tt.method == http.MethodGet {
+	// 			assert.Equal(t, tt.want.result, string(body))
+	// 		}
+	// 	})
+	// }
+	for _, tt := range testsJson {
+		t.Run(tt.name, func(t *testing.T) {
+			fmt.Println(tt.name)
+			fmt.Println("tt.mtxOld:   ", int(*tt.mtxOld.Delta))
+
+			bodyBytes, _ := json.Marshal(tt.mtxOld)
+			buf := bytes.NewReader(bodyBytes)
+			request := httptest.NewRequest(tt.method, tt.url, buf)
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, request)
+			r.ServeHTTP(w, request)
+			r.ServeHTTP(w, request)
+			result := w.Result()
+
+			body, _ := io.ReadAll(result.Body)
+    		var mtxNew store.Metrics
+			_ = json.Unmarshal(bodyBytes, &mtxNew)
+
+			result.Body.Close()
+
+			// assert.NoError(t, err)
+			fmt.Println("mtxNew:   ", int(*mtxNew.Delta))
+			assert.Equal(t, tt.want.StatusCode, result.StatusCode)
+			assert.Equal(t, tt.want.mtxNew, mtxNew)
+			if tt.name != "default" {
+				assert.Equal(t, tt.want.contentType, result.Header.Get("Content-Type"))
+			}
+			if tt.method == http.MethodGet {
+				assert.Equal(t, tt.want.result, string(body))
+			}
+		})
+	}
 }
-// type want struct {
-// 		monMap MonitorMap
-// 		runTimeMemStats RunTimeMemStats
-// 	}
-// 	tests := []struct {
-// 		name   string
-// 		want   want
-// 	}{
-// 		{
-// 			name: "norm gauge",
-// 			want: {
-// 				monMap: MonitorMap{
-// 					"Alloc": Gauge(1.3),
-// 					"TotalAlloc": Gauge(1.4),
-// 					"Sys": Gauge(1.5),
-// 					"Mallocs": Gauge(1.6),
-// 				},
-// 				runTimeMemStats: RunTimeMemStats{
-// 					Alloc: Gauge(1.3),
-// 					TotalAlloc: Gauge(1.4),
-// 					Sys: Gauge(1.5),
-// 					Mallocs: Gauge(1.6),
-// 				},
-// 			}
-// 		}
-// 	}
-
-// type want struct {
-// 		StatusCode  int
-// 		contentType string
-// 		result      string
-// 	}
-// 	tests := []struct {
-// 		name   string
-// 		want   want
-// 		url    string
-// 		method string
-// 	}{
-// 		{
-// 			name: "counter norm",
-// 			want: want{
-// 				StatusCode:  http.StatusOK,
-// 				contentType: "text/plain; charset=utf-8",
-// 			},
-// 			url:    "/update/counter/PollCount/5",
-// 			method: http.MethodPost,
-// 		},
-// 		{
-// 			name: "counter error",
-// 			want: want{
-// 				StatusCode:  http.StatusBadRequest,
-// 				contentType: "text/plain; charset=utf-8",
-// 			},
-// 			url:    "/update/counter/PollCount/none",
-// 			method: http.MethodPost,
-// 		},
-// 		{
-// 			name: "gauge norm",
-// 			want: want{
-// 				StatusCode:  http.StatusOK,
-// 				contentType: "text/plain; charset=utf-8",
-// 			},
-// 			url:    "/update/gauge/Alloc/3.6",
-// 			method: http.MethodPost,
-// 		},
-// 		{
-// 			name: "gauge error",
-// 			want: want{
-// 				StatusCode:  http.StatusBadRequest,
-// 				contentType: "text/plain; charset=utf-8",
-// 			},
-// 			url:    "/update/gauge/Alloc/none",
-// 			method: http.MethodPost,
-// 		},
-// 		{
-// 			name: "no counter no gauge",
-// 			want: want{
-// 				StatusCode:  http.StatusNotImplemented,
-// 				contentType: "text/plain; charset=utf-8",
-// 			},
-// 			url:    "/update/error/PollCount/100",
-// 			method: http.MethodPost,
-// 		},
-// 		{
-// 			name: "default",
-// 			want: want{
-// 				StatusCode:  http.StatusMethodNotAllowed,
-// 				contentType: "text/plain; charset=utf-8",
-// 			},
-// 			url:    "/",
-// 			method: http.MethodPost,
-// 		},
-// 		{
-// 			name: "get counter",
-// 			want: want{
-// 				StatusCode:  http.StatusOK,
-// 				contentType: "text/plain; charset=utf-8",
-// 				result:      "5",
-// 			},
-// 			method: http.MethodGet,
-// 			url:    "/value/counter/PollCount",
-// 		},
-// 		{
-// 			name: "get gauge",
-// 			want: want{
-// 				StatusCode:  http.StatusOK,
-// 				contentType: "text/plain; charset=utf-8",
-// 				result:      "3.6",
-// 			},
-// 			url:    "/value/gauge/Alloc",
-// 			method: http.MethodGet,
-// 		},
-// 	}
+ 
